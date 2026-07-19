@@ -1,7 +1,5 @@
-import {
-  LitElement,
-  html,
-} from "https://unpkg.com/lit-element@2.0.1/lit-element.js?module";
+import { LitElement, html, css } from "https://unpkg.com/lit-element@4.2.2/lit-element.js?module";
+import { Task } from "https://unpkg.com/@lit/task@1.0.3/index.js?module";
 
 function* createRange(start, end, increment) {
   for (let i = start; i <= end; i += increment) {
@@ -9,284 +7,320 @@ function* createRange(start, end, increment) {
   }
 }
 
-const aggregate_max = 'max';
-const aggregate_min = 'min';
-const aggregate_first = 'first';
-const aggregate_last = 'last';
-const aggregate_avg = 'avg';
-const aggregate_sum = 'sum';
-const aggregates = [
-  aggregate_avg,
-  aggregate_first,
-  aggregate_last,
-  aggregate_min,
-  aggregate_max,
-  aggregate_sum,
-]
+const aggregate_max = "max";
+const aggregate_min = "min";
+const aggregate_first = "first";
+const aggregate_last = "last";
+const aggregate_avg = "avg";
+const aggregate_sum = "sum";
+const aggregates = [aggregate_avg, aggregate_first, aggregate_last, aggregate_min, aggregate_max, aggregate_sum];
+
+const calcDateRange = (startInput, endInput) => {
+  // These are local time.
+
+  const truncateDate = (input) => {
+    // Aligns the date with the start of the day.
+    // use date.setHours(date.getHours, 0, 0, 0) if you want to truncate with the start of the hour.
+    const date = new Date(input);
+    date.setHours(/* hours */ 0, /* minutes */ 0, /* seconds */ 0, /* millis */ 0);
+    return date;
+  };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Deliberately not using truncateDate().
+
+  // If there is no userCollection then set start to start of day today
+  const start = startInput ?? today;
+  const end = new Date(Math.min(endInput ?? today, today));
+
+  const rangeStart = truncateDate(start);
+  const rangeEnd = truncateDate(end);
+
+  const increment = 1000 * 60 * 60 * 24; // 1 day in ms
+  const diffMs = Math.abs(rangeEnd - rangeStart);
+  const count = Math.max(0, Math.floor(diffMs / increment)) + 1;
+
+  // In theory we can support more periods than day, a nice to have for the future.
+  return {
+    today,
+    start: rangeStart,
+    end: rangeEnd,
+    period: "day",
+    count,
+    increment,
+  };
+};
 
 class StatisticsTile extends LitElement {
 
-  // These are the elements that when change trigger the render method to update.
+  // These are the elements that when change trigger a Render or Task update.
   static get properties() {
     return {
-      _stats: {state: true},
-      _card: {state: true},
-      _config: {state: true},
-      _start: {state: true},
-      _end: {state: true}
+      _config: {state: true, attribute: false},
+      _hass: {state: true, attribute: false},
+      _start: {state: true, attribute: false},
+      _end: {state: true, attribute: false},
+      _currentState: {state: true, attribute: false},
     };
   }
 
-  // TODO I don't need state at all.
-
-  _getDateRange = () => {
-    // These are local time.
-
-    const truncateDate = (input) => {
-      // Aligns the date with the start of the day.
-      // use date.setHours(date.getHours, 0, 0, 0) if you want to truncate with the start of the hour.
-      const date = new Date(input);
-      date.setHours(/* hours */ 0, /* minutes */ 0, /* seconds */ 0, /* millis */ 0);
-      return date;
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Deliberately not using truncateDate().
-
-    // If there is no userCollection then set start to start of day today
-    const start = this._start ?? today;
-    const end = new Date(Math.min(this._end ?? today, today));
-
-    const rangeStart = truncateDate(start);
-    const rangeEnd = truncateDate(end);
-
-    const increment = (1000 * 60 * 60 * 24); // 1 day in ms
-    const diffMs = Math.abs(rangeEnd - rangeStart);
-    const count = Math.max(0, Math.floor(diffMs / increment)) + 1; 
-
-    // In theory we can support more periods than day, a nice to have for the future.
-    return {
-      today,
-      start: rangeStart,
-      end: rangeEnd,
-      period: 'day',
-      count,
-      increment,
-    }
-  }
-
-  _connectToEnergy = () => {
-    if (this._energyCollection) {
-      return;
-    }
-
-    if (!this._hass) {
-      console.log('No hass');
-      return;
-    }   
-
-    const connectionKey = () => {
-      if (this._config?.collection_key) {
-        // User specified energy connection. See other energy cards as an example.
-        // If a user doesn't want an energy connection, they can put "energy_undefined".
-        return '_' + this._config.collection_key;
-      } 
-
-      // v2026.4 introduced a new automatic key name - try that.
-      return "_energy_" + this._hass.panelUrl;
-    }
-
-    this._energyCollection = this._hass.connection[connectionKey()];
-    if (!this._energyCollection) {
-      return;
-    }
-
-    this._unsubscribeEnergy = this._energyCollection.subscribe(({start, end}) => {
-      this._start = start;
-      this._end = end;
-    });
-  }
-
-  _fetchStatistics = async () => {
-    if (!this._hass) {
-      console.log('No hass');
-      return;
-    }
-
-    if (!this._config) {
-      console.log('No config');
-      return;
-    }
-
-    const { start, end, period } = this._getDateRange();
-
-    // This is not the best mechanism to verify if we have already queried this range
-    // But I don't really care. It will work /good enough/. 
-    if (this._stats?.[start.getTime()] && this._stats?.[end.getTime()]) {
-      return;
-    }
-
-    const stats = await this._hass.callWS({
-      type: "recorder/statistics_during_period",
-      start_time: start.toISOString(),
-      end_time: end.toISOString(),
-      statistic_ids: [this._config.entity],
-      period,
-      // Using 'state' type does limit us to only 'total', and 'total_increasing'
-      // metrics. In theory we could attempt some kind of schenanigans for 'measurement'
-      // metrics. But that is a future problem! 
-      types: ['state']
+  // Called when card is connected to the DOM.
+  connectedCallback() {
+    super.connectedCallback();
+    const event = new CustomEvent("context-request", {
+      bubbles: true,
+      composed: true,
+      cancelable: true,
     });
 
-    this._stats = Object.assign(this._stats ?? {}, 
-      Object.fromEntries(stats[this._config.entity].filter(({state}) => state).map(({start, state}) => [start, state])));
+    event.context = "states"; // The key HA's user context provider uses.
+    event.subscribe = true; // Subscribe to future updates of this context, not just get the current value.
+    event.callback = this._updateStates;
+
+    this.dispatchEvent(event);
   }
 
-  _renderCard = async () => {
-    if (this._card) {
-      return;
-    }
+  // Receive the states updates.
+  _updateStates = (states, unsubscribe) => {
+    this._unsubscribe = unsubscribe;
 
     if (!this._config) {
-      console.log('No config');
+      console.log("No config");
       return;
     }
 
-    if (!this._helpers) {
-      this._helpers = await window.loadCardHelpers?.();
+    const entityId = this._config.entity;
+    const state = states[entityId] ?? {};
 
-      // Technically it is possible we get stuck here if loadCardHelpers is slow
-      // it will set this._helpers and then this method may never get retriggered.
-      return;
+    if (this._currentState !== state) {
+      this._currentState = state;
     }
+  };
 
-    const config = {
-      type: 'tile',
-      entity: this._config.entity,
-      ...(this._config.card ?? {}),
-    }
-    this._card = await this._helpers.createCardElement(config);
-  }
-
-  _calculateState = (cardState) => {
-    if(!this._stats) {
-      return 'Loading...';
-    }
-
-    const aggregate = this.config?.aggregate ?? aggregate_sum; 
-    const { start, end, today, increment, count } = this._getDateRange();
-
-    // Kind of hacky to do this, but its a cheap easy way to get the most accurate
-    // value for "now" since statistics are otherwise delayed by an hour.
-    const stats = Object.assign({}, this._stats, {[today.getTime()]: Number(cardState.state)})
-
-    if (aggregate === aggregate_first) {
-      return stats[start.getTime()] ?? 'Unknown';
-    }
-
-    if (aggregate === aggregate_last) {
-      return stats[end.getTime()] ?? 'Unknown';
-    }
-
-    let result = 0;
-    for (const date of createRange(start.getTime(), end.getTime(), increment)) {
-      const value = stats[date];
-      if (value == null) { // Deliberately a loose equality check to also catch undefined
-        return 'Calculating...';
+  _connectToEnergy = new Task(this, {
+    task: async ([config, hass]) => {
+      if (this._energyCollection) {
+        return;
       }
 
-      if (aggregate === aggregate_avg || aggregate == aggregate_sum) {
-        result += value;
+      if (!config || !hass) {
+        return;
       }
 
-      if (aggregate === aggregate_max) {
-        result = Math.max(result, value);
+      const connectionKey = () => {
+        if (config.collection_key) {
+          // User specified energy connection. See other energy cards as an example.
+          // If a user doesn't want an energy connection, they can put "energy_undefined".
+          return "_" + config.collection_key;
+        }
+
+        // v2026.4 introduced a new automatic key name - try that.
+        return "_energy_" + hass.panelUrl;
+      };
+
+      this._energyCollection = hass.connection[connectionKey()];
+      if (!this._energyCollection) {
+        return;
       }
 
-      if (aggregate === aggregate_min) {
-        result = Math.min(result, value);
+      this._unsubscribeEnergy = this._energyCollection.subscribe(({ start, end }) => {
+        this._start = start;
+        this._end = end;
+      });
+    },
+    args: () => [this._config, this._hass],
+  });
+
+  _fetchStatistics = new Task(this, {
+    task: async ([config, hass, startInput, endInput]) => {
+      if (!config || !hass) {
+        return;
       }
-    }
 
-    if(aggregate === aggregate_avg) {
-      result = result / count;
-    }
+      const { start, end, period } = calcDateRange(startInput, endInput);
+      const statsInput = this._fetchStatistics.value;
 
-    return result;
-  }
+      // This is not the best mechanism to verify if we have already queried this range
+      // But I don't really care. It will work /good enough/.
+      if (statsInput?.[start.getTime()] && statsInput?.[end.getTime()]) {
+        return statsInput;
+      }
 
-  _formatState = (cardState) => {
-    if(!this._hass) {
-      console.log('No hass');
-      return;
-    }
+      const stats = await hass.callWS({
+        type: "recorder/statistics_during_period",
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        statistic_ids: [config.entity],
+        period,
+        // Using 'state' type does limit us to only 'total', and 'total_increasing'
+        // metrics. In theory we could attempt some kind of schenanigans for 'measurement'
+        // metrics. But that is a future problem!
+        types: ["state"],
+      });
 
-    const state = this._calculateState(cardState);
-    if (typeof state === 'string') {
-      return state;
-    }
+      const results =  Object.assign(statsInput ?? {}, Object.fromEntries(stats[config.entity].filter(({ state }) => state).map(({ start, state }) => [start, state])));
 
-    return this._hass.formatEntityState({
-      ...cardState,
-      state,
-    })
-  }
+      console.log('results debug', results);
+      return results;
+    },
+    args: () => [this._config, this._hass, this._start, this._end],
+  });
+
+  _loadCardHelpers = new Task(this, {
+    task: async () => {
+      const loadCardHelpers = window.loadCardHelpers;
+      if (!loadCardHelpers) {
+        return;
+      }
+
+      if (this._loadCardHelpers.value) {
+        return this._loadCardHelpers.value;
+      }
+
+      return loadCardHelpers?.();
+    },
+    args: () => [],
+  });
+
+  _renderCard = new Task(this, {
+    task: async ([config, helpers]) => {
+      if (!config || !helpers) {
+        return;
+      }
+
+      if (this._renderCard.value) {
+        return this._renderCard.value;
+      }
+
+      const cardConfig = {
+        type: "tile",
+        entity: config.entity,
+        ...(config.card ?? {}),
+      };
+      return helpers.createCardElement(cardConfig);
+    },
+    args: () => [this._config, this._loadCardHelpers.value],
+  });
+
+  _calculateState = new Task(this, {
+    task: ([config, statsInput, currenState, startInput, endInput]) => {
+      if (!config || !statsInput || !currenState) {
+        return "Loading...";
+      }
+
+      const aggregate = config.aggregate ?? aggregate_sum;
+      const { start, end, today, increment, count } = calcDateRange(startInput, endInput);
+
+      // Kind of hacky to do this, but its a cheap easy way to get the most accurate
+      // value for "now" since statistics are otherwise delayed by an hour.
+      const stats = Object.assign({}, statsInput, {
+        [today.getTime()]: Number(currenState.state),
+      });
+
+      if (aggregate === aggregate_first) {
+        return stats[start.getTime()] ?? "Unknown";
+      }
+
+      if (aggregate === aggregate_last) {
+        return stats[end.getTime()] ?? "Unknown";
+      }
+
+      let result = 0;
+      for (const date of createRange(start.getTime(), end.getTime(), increment)) {
+        const value = stats[date];
+        if (value == null) {
+          // Deliberately a loose equality check to also catch undefined
+          console.log('debug', stats, date, value);
+          return "Calculating...";
+        }
+
+        if (aggregate === aggregate_avg || aggregate == aggregate_sum) {
+          result += value;
+        }
+
+        if (aggregate === aggregate_max) {
+          result = Math.max(result, value);
+        }
+
+        if (aggregate === aggregate_min) {
+          result = Math.min(result, value);
+        }
+      }
+
+      if (aggregate === aggregate_avg) {
+        result = result / count;
+      }
+
+      return result;
+    },
+    args: () => [this._config, this._fetchStatistics.value, this._currentState, this._start, this._end],
+  });
+
+  _renderTask = new Task(this, {
+    task: ([hass, card, state]) => {
+      if (!hass || !card || !state) {
+        return;
+      }
+
+      card.hass = {
+        ...hass,
+        // Its hacky, but the only way I can figure out how to hook into the tile card render loop to display what I want.
+        formatEntityState: (cardState) => {
+          if (typeof state === "string") {
+            return state;
+          }
+
+          return hass.formatEntityState({
+            ...cardState,
+            state,
+          });
+        },
+      };
+
+      return html`${card}`;
+    },
+    args: () => [this._hass, this._renderCard.value, this._calculateState.value],
+  });
 
   render() {
-    // These are all async, but they also retrigger a render. 
-    // So its okay we aren't actually awaiting them here.
-    this._connectToEnergy();
-    this._fetchStatistics();
-    this._renderCard();
-
-    if (!this._card) {
-      console.log('No card');
-      return;
-    }
-
-    if (!this._hass) {
-      console.log('No hass');
-      return;
-    }
-
-    console.log('Rendering... ' + this._config?.entity);
-    this._card.hass = {
-      ...this._hass,
-      // Its hacky, but the only way I can figure out how to hook into the tile card render loop to display what I want.
-      formatEntityState: (cardState) => this._formatState(cardState),
-    };
-
-    return html`${this._card}`;
+    return this._renderTask.render({
+      pending: () => html`Pending...`,
+      complete: (value) => value,
+      error: (e) => html`Error: ${e}`,
+    });
   }
 
-  setConfig = async (config) => {
+  setConfig = (config) => {
     if (!config.entity) {
       throw new Error("You need to define an entity");
     }
 
-    if (config.collection_key && !config.collection_key.startsWith('energy_')) {
+    if (config.collection_key && !config.collection_key.startsWith("energy_")) {
       throw new Error("Energy collection key must start with energy_");
     }
 
     if (config.aggregate && !aggregates.includes(config.aggregate)) {
-      throw new Error(`Aggregate must be one of [${aggregates.join(', ')}]` )
+      throw new Error(`Aggregate must be one of [${aggregates.join(", ")}]`);
     }
 
     this._config = config;
-  }
+  };
 
   set hass(hass) {
     this._hass = hass;
+
+    // There is probably a better way to do this, but hey this works and its easy.
+    this._loadCardHelpers.run();
   }
 
   getCardSize = () => {
-    if (this._card) {
-      return this._card.getCardSize();
+    if (this._renderCard.value) {
+      return this._renderCard.value.getCardSize();
     }
 
     // Hardcoded just like Tile card.
     return 1;
-  }
+  };
 
   disconnectedCallback() {
     super.disconnectedCallback();
@@ -302,7 +336,7 @@ class StatisticsTile extends LitElement {
   }
 
   static get styles() {
-    return "";
+    return css``;
   }
 }
 customElements.define("statistics-tile", StatisticsTile);
