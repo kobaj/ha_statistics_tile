@@ -29,47 +29,12 @@ class StatisticsTile extends LitElement {
   // These are the elements that when change trigger the render method to update.
   static get properties() {
     return {
-      _state: {state: true},
       _stats: {state: true},
       _card: {state: true},
       _config: {state: true},
       _start: {state: true},
       _end: {state: true}
     };
-  }
-
-  // Called when card is connected to the DOM.
-  connectedCallback() {
-    super.connectedCallback();
-    const event = new CustomEvent('context-request', {
-      bubbles: true,
-      composed: true,
-      cancelable: true,
-    });
-
-    event.context = 'states'; // The key HA's user context provider uses.
-    event.subscribe = true; // Subscribe to future updates of this context, not just get the current value.
-    event.callback = this._updateStates;
-
-    this.dispatchEvent(event);
-  }
-
-  // Receive the states updates and checks if the card needs a rerender.
-  _updateStates = (states, unsubscribe) => {
-    this._unsubscribe = unsubscribe;
-
-    if(!this._config) {
-      console.log('No config');
-      return;
-    }
-
-    const entityId = this._config.entity;
-    const state = states[entityId] ?? {};
-
-    if (this._state !== state) {
-      // Trigger a rerender.
-      this._state = state;
-    }
   }
 
   // TODO I don't need state at all.
@@ -114,33 +79,32 @@ class StatisticsTile extends LitElement {
     if (this._energyCollection) {
       return;
     }
-    
+
     if (!this._hass) {
       console.log('No hass');
       return;
+    }   
+
+    const connectionKey = () => {
+      if (this._config?.collection_key) {
+        // User specified energy connection. See other energy cards as an example.
+        // If a user doesn't want an energy connection, they can put "energy_undefined".
+        return '_' + this._config.collection_key;
+      } 
+
+      // v2026.4 introduced a new automatic key name - try that.
+      return "_energy_" + this._hass.panelUrl;
     }
 
-    if (this._config?.collection_key) {
-      // User specified energy connection. See other energy cards as an example.
-      // If a user doesn't want an energy connection, they can put "energy_undefined".
-      this._energyCollection = this._hass.connection['_' + this._config.collection_key];
-    } else if (this._hass.connection['_energy']) {
-      // Old way of getting the energy connection.
-      this._energyCollection = this._hass.connection['_energy'];
-    } else {
-      // v2026.4 introduced a new key name - try that.
-      const panelKey = "_energy_" + this._hass.panelUrl;
-      if (this._hass.connection[panelKey]) {
-        this._energyCollection = this._hass.connection[panelKey];
-      }
+    this._energyCollection = this._hass.connection[connectionKey()];
+    if (!this._energyCollection) {
+      return;
     }
 
-    if(this._energyCollection) {
-      this._unsubscribeEnergy = this._energyCollection.subscribe(({start, end}) => {
-        this._start = start;
-        this._end = end;
-      });
-    }
+    this._unsubscribeEnergy = this._energyCollection.subscribe(({start, end}) => {
+      this._start = start;
+      this._end = end;
+    });
   }
 
   _fetchStatistics = async () => {
@@ -176,9 +140,6 @@ class StatisticsTile extends LitElement {
 
     this._stats = Object.assign(this._stats ?? {}, 
       Object.fromEntries(stats[this._config.entity].filter(({state}) => state).map(({start, state}) => [start, state])));
-
-    // TODO this should not include today??
-    console.log('stats', this._stats);
   }
 
   _renderCard = async () => {
@@ -193,10 +154,9 @@ class StatisticsTile extends LitElement {
 
     if (!this._helpers) {
       this._helpers = await window.loadCardHelpers?.();
-    }
 
-    if(!this._helpers) {
-      console.log('No helpers');
+      // Technically it is possible we get stuck here if loadCardHelpers is slow
+      // it will set this._helpers and then this method may never get retriggered.
       return;
     }
 
@@ -208,48 +168,47 @@ class StatisticsTile extends LitElement {
     this._card = await this._helpers.createCardElement(config);
   }
 
-  _calculateState = () => {
-    if (!this._state || !this._stats || !this._config) {
-      return "Loading...";
+  _calculateState = (cardState) => {
+    if(!this._stats) {
+      return 'Loading...';
     }
 
+    const aggregate = this.config?.aggregate ?? aggregate_sum; 
     const { start, end, today, increment, count } = this._getDateRange();
-    const includeState = end >= today; 
-    const state = Number(this._state.state);
 
-    if (this._config.aggregate === aggregate_first) {
-      return this._stats[start.getTime()] ?? 'Unknown';
+    // Kind of hacky to do this, but its a cheap easy way to get the most accurate
+    // value for "now" since statistics are otherwise delayed by an hour.
+    const stats = Object.assign({}, this._stats, {[today.getTime()]: Number(cardState.state)})
+
+    if (aggregate === aggregate_first) {
+      return stats[start.getTime()] ?? 'Unknown';
     }
 
-    if (this._config.aggregate === aggregate_last) {
-      if (includeState) {
-        return state;
-      }
-
-      return this._stats[end.getTime()];
+    if (aggregate === aggregate_last) {
+      return stats[end.getTime()] ?? 'Unknown';
     }
 
-    let result = includeState ? state : 0;
+    let result = 0;
     for (const date of createRange(start.getTime(), end.getTime(), increment)) {
-      const value = this._stats[date];
+      const value = stats[date];
       if (value == null) { // Deliberately a loose equality check to also catch undefined
         return 'Calculating...';
       }
 
-      if (this._config.aggregate === aggregate_avg || this._config.aggregate == aggregate_sum) {
+      if (aggregate === aggregate_avg || aggregate == aggregate_sum) {
         result += value;
       }
 
-      if (this._config.aggregate === aggregate_max) {
+      if (aggregate === aggregate_max) {
         result = Math.max(result, value);
       }
 
-      if (this._config.aggregate === aggregate_min) {
+      if (aggregate === aggregate_min) {
         result = Math.min(result, value);
       }
     }
 
-    if(this._config.aggregate === aggregate_avg) {
+    if(aggregate === aggregate_avg) {
       result = result / count;
     }
 
@@ -257,23 +216,20 @@ class StatisticsTile extends LitElement {
   }
 
   _formatState = (cardState) => {
-    const state = this._calculateState();
+    if(!this._hass) {
+      console.log('No hass');
+      return;
+    }
+
+    const state = this._calculateState(cardState);
     if (typeof state === 'string') {
       return state;
     }
 
-    const uom = this._state?.attributes?.unit_of_measurement;
-
-    const digits = this._config?.digits ?? 2;
-    const formattedState = state.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
-
-    // TODO We should probably call the real hass formatEntityState, passing in a modified entity
-    // instead of this hacky uom stuff here. 
-    if (uom) {
-      return `${formattedState} ${uom}`;
-    }
-
-    return formattedState;
+    return this._hass.formatEntityState({
+      ...cardState,
+      state,
+    })
   }
 
   render() {
@@ -312,7 +268,7 @@ class StatisticsTile extends LitElement {
       throw new Error("Energy collection key must start with energy_");
     }
 
-    if (!config.aggregate || !aggregates.includes(config.aggregate)) {
+    if (config.aggregate && !aggregates.includes(config.aggregate)) {
       throw new Error(`Aggregate must be one of [${aggregates.join(', ')}]` )
     }
 
