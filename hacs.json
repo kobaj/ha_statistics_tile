@@ -1,0 +1,7 @@
+{
+  "name": "Statistics Tile",
+  "content_in_root": true,
+  "filename": "statistics_tile.js",
+  "render_readme": true,
+  "homeassistant": "2026.7.2"
+}
