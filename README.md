@@ -18,7 +18,7 @@ This is based on the instructions at
 1. Click on the 3 dots in the top right corner.
 1. Select "Custom repositories"
 1. Add the URL `https://github.com/kobaj/ha_statistics_tile` to the repository.
-1. Select `Integration` as the type.
+1. Select `Dashboard` as the type.
 1. Click the "ADD" button.
 1. Search for "Statistics Tile" in the HACS community store
 1. Click "Download"!
