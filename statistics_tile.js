@@ -221,7 +221,12 @@ class StatisticsTile extends LitElement {
 
     let result = 0;
     for (const date of createRange(start.getTime(), end.getTime(), increment)) {
-      const value = stats[date];
+      const hour = 1000 * 60 * 60; // in ms
+      const dateLess = date - hour;
+      const datePlus = date + hour;
+
+      // I don't really care to actually calculate daylight savings time offset, this hack will do.
+      const value = stats[date] ?? stats[dateLess] ?? stats[datePlus];
       if (value == null) {
         // Deliberately a loose equality check to also catch undefined
         continue;
