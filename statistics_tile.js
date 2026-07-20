@@ -224,7 +224,7 @@ class StatisticsTile extends LitElement {
       const value = stats[date];
       if (value == null) {
         // Deliberately a loose equality check to also catch undefined
-        return "Calculating...";
+        continue;
       }
 
       if (aggregate === aggregate_avg || aggregate == aggregate_sum) {
