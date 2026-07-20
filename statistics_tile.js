@@ -97,8 +97,7 @@ class StatisticsTile extends LitElement {
     }
   };
 
-  _connectToEnergy = new Task(this, {
-    task: async ([config, hass]) => {
+  _connectToEnergy = async (config, hass) => {
       if (this._energyCollection) {
         return;
       }
@@ -127,69 +126,59 @@ class StatisticsTile extends LitElement {
         this._start = start;
         this._end = end;
       });
-    },
-    args: () => [this._config, this._hass],
-  });
+    };
 
-  _fetchStatistics = new Task(this, {
-    task: async ([config, hass, startInput, endInput]) => {
-      if (!config || !hass) {
-        return;
+  _fetchStatistics = async (config, hass, startInput, endInput) => {
+    if (!config || !hass) {
+      return;
+    }
+
+    const { start, end, period } = calcDateRange(startInput, endInput);
+    const statsInput = this._statsInput;
+
+    // This is not the best mechanism to verify if we have already queried this range
+    // But I don't really care. It will work /good enough/.
+    if (statsInput?.[start.getTime()] && statsInput?.[end.getTime()]) {
+      return statsInput;
+    }
+
+    const stats = await hass.callWS({
+      type: "recorder/statistics_during_period",
+      start_time: start.toISOString(),
+      end_time: end.toISOString(),
+      statistic_ids: [config.entity],
+      period,
+      // Using 'state' type does limit us to only 'total', and 'total_increasing'
+      // metrics. In theory we could attempt some kind of schenanigans for 'measurement'
+      // metrics. But that is a future problem!
+      types: ["state"],
+    });
+
+    this._statsInput = Object.assign(statsInput ?? {}, Object.fromEntries(stats[config.entity].filter(({ state }) => state).map(({ start, state }) => [start, state])));
+    return this._statsInput;
+  };
+
+  _loadCardHelpers = async () => {
+      if (this._lch) {
+        return this._lch;
       }
 
-      const { start, end, period } = calcDateRange(startInput, endInput);
-      const statsInput = this._fetchStatistics.value;
-
-      // This is not the best mechanism to verify if we have already queried this range
-      // But I don't really care. It will work /good enough/.
-      if (statsInput?.[start.getTime()] && statsInput?.[end.getTime()]) {
-        return statsInput;
-      }
-
-      const stats = await hass.callWS({
-        type: "recorder/statistics_during_period",
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
-        statistic_ids: [config.entity],
-        period,
-        // Using 'state' type does limit us to only 'total', and 'total_increasing'
-        // metrics. In theory we could attempt some kind of schenanigans for 'measurement'
-        // metrics. But that is a future problem!
-        types: ["state"],
-      });
-
-      const results =  Object.assign(statsInput ?? {}, Object.fromEntries(stats[config.entity].filter(({ state }) => state).map(({ start, state }) => [start, state])));
-
-      console.log('results debug', results);
-      return results;
-    },
-    args: () => [this._config, this._hass, this._start, this._end],
-  });
-
-  _loadCardHelpers = new Task(this, {
-    task: async () => {
       const loadCardHelpers = window.loadCardHelpers;
       if (!loadCardHelpers) {
         return;
       }
 
-      if (this._loadCardHelpers.value) {
-        return this._loadCardHelpers.value;
+      this._lch = loadCardHelpers?.();
+      return this._lch;
+    };
+
+  _renderCard = async (config, helpers) => {
+      if (this._card) {
+        return this._card;
       }
 
-      return loadCardHelpers?.();
-    },
-    args: () => [],
-  });
-
-  _renderCard = new Task(this, {
-    task: async ([config, helpers]) => {
       if (!config || !helpers) {
         return;
-      }
-
-      if (this._renderCard.value) {
-        return this._renderCard.value;
       }
 
       const cardConfig = {
@@ -197,13 +186,11 @@ class StatisticsTile extends LitElement {
         entity: config.entity,
         ...(config.card ?? {}),
       };
-      return helpers.createCardElement(cardConfig);
-    },
-    args: () => [this._config, this._loadCardHelpers.value],
-  });
+      this._card = helpers.createCardElement(cardConfig);
+      return this._card;
+    };
 
-  _calculateState = new Task(this, {
-    task: ([config, statsInput, currenState, startInput, endInput]) => {
+  _calculateState = (config, statsInput, currenState, startInput, endInput) => {
       if (!config || !statsInput || !currenState) {
         return "Loading...";
       }
@@ -252,15 +239,19 @@ class StatisticsTile extends LitElement {
       }
 
       return result;
-    },
-    args: () => [this._config, this._fetchStatistics.value, this._currentState, this._start, this._end],
-  });
+    };
 
   _renderTask = new Task(this, {
-    task: ([hass, card, state]) => {
-      if (!hass || !card || !state) {
-        return;
+    task: async ([config, hass, currentState, startInput, endInput]) => {
+      if (!config || !hass || !currentState) {
+        return 'Starting...';
       }
+
+      await this._connectToEnergy(config, hass);
+      const helpers = await this._loadCardHelpers()
+      const card = await this._renderCard(config, helpers);
+      const stats = await this._fetchStatistics(config, hass, startInput, endInput);
+      const state = await this._calculateState(config, stats, currentState, startInput, endInput);
 
       card.hass = {
         ...hass,
@@ -279,7 +270,7 @@ class StatisticsTile extends LitElement {
 
       return html`${card}`;
     },
-    args: () => [this._hass, this._renderCard.value, this._calculateState.value],
+    args: () => [this._config, this._hass, this._currentState, this._start, this._end],
   });
 
   render() {
@@ -308,14 +299,11 @@ class StatisticsTile extends LitElement {
 
   set hass(hass) {
     this._hass = hass;
-
-    // There is probably a better way to do this, but hey this works and its easy.
-    this._loadCardHelpers.run();
   }
 
   getCardSize = () => {
-    if (this._renderCard.value) {
-      return this._renderCard.value.getCardSize();
+    if (this._card) {
+      return this._card.getCardSize();
     }
 
     // Hardcoded just like Tile card.
