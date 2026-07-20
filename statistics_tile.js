@@ -282,14 +282,15 @@ class StatisticsTile extends LitElement {
       const stats = await this._fetchStatistics(config, hass, startInput, endInput);
       const state = await this._calculateState(config, stats, currentState, startInput, endInput);
 
-      return state;
+      this._state = state;
+      return this._state;
     },
     args: () => [this._config, this._hass, this._currentState, this._start, this._end],
   });
 
   render() {
     return this._renderTask.render({
-      pending: () => this._updateCard(this._hass, this._card, 0),
+      pending: () => this._updateCard(this._hass, this._card, this._state ?? 0),
       complete: (value) => this._updateCard(this._hass, this._card, value),
       error: (e) => this._updateCard(this._hass, this._card, `Error: ${e}`),
     });
