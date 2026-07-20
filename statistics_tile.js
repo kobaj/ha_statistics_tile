@@ -197,8 +197,8 @@ class StatisticsTile extends LitElement {
     return this._card;
   };
 
-  _calculateState = (config, statsInput, currenState, startInput, endInput) => {
-    if (!config || !statsInput || !currenState) {
+  _calculateState = (config, statsInput, currentState, startInput, endInput) => {
+    if (!config || !statsInput || !currentState) {
       return "Loading...";
     }
 
@@ -208,7 +208,7 @@ class StatisticsTile extends LitElement {
     // Kind of hacky to do this, but its a cheap easy way to get the most accurate
     // value for "now" since statistics are otherwise delayed by an hour.
     const stats = Object.assign({}, statsInput, {
-      [today.getTime()]: Number(currenState.state),
+      [today.getTime()]: Number(currentState.state),
     });
 
     if (aggregate === aggregate_first) {
