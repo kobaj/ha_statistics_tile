@@ -1,11 +1,6 @@
 import { LitElement, html, css } from "https://unpkg.com/lit-element@4.2.2/lit-element.js?module";
 import { Task } from "https://unpkg.com/@lit/task@1.0.3/index.js?module";
-
-function* createRange(start, end, increment) {
-  for (let i = start; i <= end; i += increment) {
-    yield i;
-  }
-}
+import { DateTime } from "https://unpkg.com/luxon@3.7.2?module";
 
 const aggregate_max = "max";
 const aggregate_min = "min";
@@ -38,7 +33,22 @@ const calcDateRange = (startInput, endInput) => {
 
   const increment = 1000 * 60 * 60 * 24; // 1 day in ms
   const diffMs = Math.abs(rangeEnd - rangeStart);
-  const count = Math.max(0, Math.floor(diffMs / increment)) + 1;
+  const count = Math.max(0, Math.ceil(diffMs / increment)) + 1; // using ceil means we include today
+
+  // Home assistant is wild in that it returns the dates from recorder statistics
+  // relative to your current timezone, aligned to DST of that moment. So
+  // January 1 2020 is -8 UTC, Jul 20 2020 is -7 UTC.
+  //
+  // What this means is you can't just add a static 86400 seconds from start to end.
+  // You need to add "one day" (which may be 25 hours as you cross over DST).
+  //
+  // I can't do that math, so just use the luxon library. :D
+  function* range() {
+    const dateTimeRangEnd = DateTime.fromJSDate(rangeEnd);
+    for (let i = DateTime.fromJSDate(rangeStart); i <= dateTimeRangEnd; i = i.plus({ days: 1 })) {
+      yield i.toJSDate();
+    }
+  }
 
   // In theory we can support more periods than day, a nice to have for the future.
   return {
@@ -47,7 +57,7 @@ const calcDateRange = (startInput, endInput) => {
     end: rangeEnd,
     period: "day",
     count,
-    increment,
+    range,
   };
 };
 
@@ -203,7 +213,7 @@ class StatisticsTile extends LitElement {
     }
 
     const aggregate = config.aggregate ?? aggregate_sum;
-    const { start, end, today, increment, count } = calcDateRange(startInput, endInput);
+    const { start, end, today, range, count } = calcDateRange(startInput, endInput);
 
     // Kind of hacky to do this, but its a cheap easy way to get the most accurate
     // value for "now" since statistics are otherwise delayed by an hour.
@@ -220,13 +230,8 @@ class StatisticsTile extends LitElement {
     }
 
     let result = 0;
-    for (const date of createRange(start.getTime(), end.getTime(), increment)) {
-      const hour = 1000 * 60 * 60; // in ms
-      const dateLess = date - hour;
-      const datePlus = date + hour;
-
-      // I don't really care to actually calculate daylight savings time offset, this hack will do.
-      const value = stats[date] ?? stats[dateLess] ?? stats[datePlus];
+    for (const date of range()) {
+      const value = stats[date.getTime()];
       if (value == null) {
         // Deliberately a loose equality check to also catch undefined
         continue;
