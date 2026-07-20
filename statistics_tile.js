@@ -89,9 +89,9 @@ class StatisticsTile extends LitElement {
     }
 
     const entityId = this._config.entity;
-    const state = states[entityId] ?? {};
+    const state = states[entityId];
 
-    if (this._currentState !== state) {
+    if (this._currentState?.state !== state?.state) {
       this._currentState = state;
     }
   };
