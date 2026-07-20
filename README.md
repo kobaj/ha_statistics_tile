@@ -2,7 +2,11 @@
 
 Note: The primary repository is at https://gitlab.com/kobaj/ha_statistics_tile. Please make all pull requests and issues there.
 
-Home Assistant Card that acts like a combination of the [Statistics card](https://www.home-assistant.io/dashboards/statistic/), and the [Tile Card](https://www.home-assistant.io/dashboards/tile/). While in theory being more customizable than both.
+Home Assistant Card that looks like the [Tile Card](https://www.home-assistant.io/dashboards/tile/) with its clean simple information display, but acts like  the [Statistics card](https://www.home-assistant.io/dashboards/statistic/) with the ability to aggregate that information over time. 
+
+|   |   |
+|---|---|
+|![Device view showing some example statistics tiles with a single day selected](img/single_day.png)|![Device view showing some example statistics tiles with multiple days selected](img/multi_day.png)
 
 ## Installation
 
@@ -28,4 +32,18 @@ This is based on the instructions at
 
 ## Setup
 
-Coming soon! 
+The main Config has three options, all configured via the UI when adding the card.
+
+* `entity` is the entity you want statistics for. Must be an entity with `state_class` equal to either `total` or `total_increasing`.
+* `aggregate` is the function you want to use to aggregate the entity metrics for over the selected time period.
+* `collection_key` an optional key to connect a collection of energy cards to a particular date picker.
+
+There is a hidden option called `card` which has all the same sub entities as the `tile` card. So you can do things like set the name of the tile.
+
+```
+type: custom:statistics-tile
+entity: sensor.inverter_modbus_daily_energy_generated
+aggregate: sum
+card:
+  name: Solar
+```
