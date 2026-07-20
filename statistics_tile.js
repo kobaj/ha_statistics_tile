@@ -347,8 +347,8 @@ class StatisticsTile extends LitElement {
     return {
       schema: [
         { name: "entity", required: true, selector: { entity: {} } },
-        { name: "collection_key", selector: { text: {} } },
         { name: "aggregate", selector: { select: { options: aggregates } } },
+        { name: "collection_key", selector: { text: {} } },
       ],
       computeLabel: (schema) => {
         switch (schema.name) {
