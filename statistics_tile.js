@@ -52,15 +52,14 @@ const calcDateRange = (startInput, endInput) => {
 };
 
 class StatisticsTile extends LitElement {
-
   // These are the elements that when change trigger a Render or Task update.
   static get properties() {
     return {
-      _config: {state: true, attribute: false},
-      _hass: {state: true, attribute: false},
-      _start: {state: true, attribute: false},
-      _end: {state: true, attribute: false},
-      _currentState: {state: true, attribute: false},
+      _config: { state: true, attribute: false },
+      _hass: { state: true, attribute: false },
+      _start: { state: true, attribute: false },
+      _end: { state: true, attribute: false },
+      _currentState: { state: true, attribute: false },
     };
   }
 
@@ -98,35 +97,35 @@ class StatisticsTile extends LitElement {
   };
 
   _connectToEnergy = async (config, hass) => {
-      if (this._energyCollection) {
-        return;
+    if (this._energyCollection) {
+      return;
+    }
+
+    if (!config || !hass) {
+      return;
+    }
+
+    const connectionKey = () => {
+      if (config.collection_key) {
+        // User specified energy connection. See other energy cards as an example.
+        // If a user doesn't want an energy connection, they can put "energy_undefined".
+        return "_" + config.collection_key;
       }
 
-      if (!config || !hass) {
-        return;
-      }
-
-      const connectionKey = () => {
-        if (config.collection_key) {
-          // User specified energy connection. See other energy cards as an example.
-          // If a user doesn't want an energy connection, they can put "energy_undefined".
-          return "_" + config.collection_key;
-        }
-
-        // v2026.4 introduced a new automatic key name - try that.
-        return "_energy_" + hass.panelUrl;
-      };
-
-      this._energyCollection = hass.connection[connectionKey()];
-      if (!this._energyCollection) {
-        return;
-      }
-
-      this._unsubscribeEnergy = this._energyCollection.subscribe(({ start, end }) => {
-        this._start = start;
-        this._end = end;
-      });
+      // v2026.4 introduced a new automatic key name - try that.
+      return "_energy_" + hass.panelUrl;
     };
+
+    this._energyCollection = hass.connection[connectionKey()];
+    if (!this._energyCollection) {
+      return;
+    }
+
+    this._unsubscribeEnergy = this._energyCollection.subscribe(({ start, end }) => {
+      this._start = start;
+      this._end = end;
+    });
+  };
 
   _fetchStatistics = async (config, hass, startInput, endInput) => {
     if (!config || !hass) {
@@ -154,130 +153,145 @@ class StatisticsTile extends LitElement {
       types: ["state"],
     });
 
-    this._statsInput = Object.assign(statsInput ?? {}, Object.fromEntries(stats[config.entity].filter(({ state }) => state).map(({ start, state }) => [start, state])));
+    if (!stats[config.entity]) {
+      // Sometimes we just don't get results :D!
+      return this._statsInput;
+    }
+
+    this._statsInput = Object.assign(
+      statsInput ?? {},
+      Object.fromEntries(stats[config.entity].filter(({ state }) => state).map(({ start, state }) => [start, state]))
+    );
     return this._statsInput;
   };
 
   _loadCardHelpers = async () => {
-      if (this._lch) {
-        return this._lch;
-      }
-
-      const loadCardHelpers = window.loadCardHelpers;
-      if (!loadCardHelpers) {
-        return;
-      }
-
-      this._lch = loadCardHelpers?.();
+    if (this._lch) {
       return this._lch;
-    };
+    }
+
+    const loadCardHelpers = window.loadCardHelpers;
+    if (!loadCardHelpers) {
+      return;
+    }
+
+    this._lch = await loadCardHelpers?.();
+    return this._lch;
+  };
 
   _renderCard = async (config, helpers) => {
-      if (this._card) {
-        return this._card;
-      }
-
-      if (!config || !helpers) {
-        return;
-      }
-
-      const cardConfig = {
-        type: "tile",
-        entity: config.entity,
-        ...(config.card ?? {}),
-      };
-      this._card = helpers.createCardElement(cardConfig);
+    if (this._card) {
       return this._card;
+    }
+
+    if (!config || !helpers) {
+      return;
+    }
+
+    const cardConfig = {
+      type: "tile",
+      entity: config.entity,
+      ...(config.card ?? {}),
     };
+    this._card = await helpers.createCardElement(cardConfig);
+    return this._card;
+  };
 
   _calculateState = (config, statsInput, currenState, startInput, endInput) => {
-      if (!config || !statsInput || !currenState) {
-        return "Loading...";
+    if (!config || !statsInput || !currenState) {
+      return "Loading...";
+    }
+
+    const aggregate = config.aggregate ?? aggregate_sum;
+    const { start, end, today, increment, count } = calcDateRange(startInput, endInput);
+
+    // Kind of hacky to do this, but its a cheap easy way to get the most accurate
+    // value for "now" since statistics are otherwise delayed by an hour.
+    const stats = Object.assign({}, statsInput, {
+      [today.getTime()]: Number(currenState.state),
+    });
+
+    if (aggregate === aggregate_first) {
+      return stats[start.getTime()] ?? "Unknown";
+    }
+
+    if (aggregate === aggregate_last) {
+      return stats[end.getTime()] ?? "Unknown";
+    }
+
+    let result = 0;
+    for (const date of createRange(start.getTime(), end.getTime(), increment)) {
+      const value = stats[date];
+      if (value == null) {
+        // Deliberately a loose equality check to also catch undefined
+        return "Calculating...";
       }
 
-      const aggregate = config.aggregate ?? aggregate_sum;
-      const { start, end, today, increment, count } = calcDateRange(startInput, endInput);
-
-      // Kind of hacky to do this, but its a cheap easy way to get the most accurate
-      // value for "now" since statistics are otherwise delayed by an hour.
-      const stats = Object.assign({}, statsInput, {
-        [today.getTime()]: Number(currenState.state),
-      });
-
-      if (aggregate === aggregate_first) {
-        return stats[start.getTime()] ?? "Unknown";
+      if (aggregate === aggregate_avg || aggregate == aggregate_sum) {
+        result += value;
       }
 
-      if (aggregate === aggregate_last) {
-        return stats[end.getTime()] ?? "Unknown";
+      if (aggregate === aggregate_max) {
+        result = Math.max(result, value);
       }
 
-      let result = 0;
-      for (const date of createRange(start.getTime(), end.getTime(), increment)) {
-        const value = stats[date];
-        if (value == null) {
-          // Deliberately a loose equality check to also catch undefined
-          console.log('debug', stats, date, value);
-          return "Calculating...";
+      if (aggregate === aggregate_min) {
+        result = Math.min(result, value);
+      }
+    }
+
+    if (aggregate === aggregate_avg) {
+      result = result / count;
+    }
+
+    return result;
+  };
+
+  _updateCard = (hass, card, state) => {
+    if (!hass || !card) {
+      return html`<ha-card>${state}</ha-card>`;
+    }
+
+    card.hass = {
+      ...hass,
+      // Its hacky, but the only way I can figure out how to hook into the tile card render loop to display what I want.
+      formatEntityState: (cardState) => {
+        if (typeof state === "string") {
+          return state;
         }
 
-        if (aggregate === aggregate_avg || aggregate == aggregate_sum) {
-          result += value;
-        }
-
-        if (aggregate === aggregate_max) {
-          result = Math.max(result, value);
-        }
-
-        if (aggregate === aggregate_min) {
-          result = Math.min(result, value);
-        }
-      }
-
-      if (aggregate === aggregate_avg) {
-        result = result / count;
-      }
-
-      return result;
+        return hass.formatEntityState({
+          ...cardState,
+          state,
+        });
+      },
     };
+
+    return html`${card}`;
+  };
 
   _renderTask = new Task(this, {
     task: async ([config, hass, currentState, startInput, endInput]) => {
       if (!config || !hass || !currentState) {
-        return 'Starting...';
+        return "Starting...";
       }
 
       await this._connectToEnergy(config, hass);
-      const helpers = await this._loadCardHelpers()
+      const helpers = await this._loadCardHelpers();
       const card = await this._renderCard(config, helpers);
       const stats = await this._fetchStatistics(config, hass, startInput, endInput);
       const state = await this._calculateState(config, stats, currentState, startInput, endInput);
 
-      card.hass = {
-        ...hass,
-        // Its hacky, but the only way I can figure out how to hook into the tile card render loop to display what I want.
-        formatEntityState: (cardState) => {
-          if (typeof state === "string") {
-            return state;
-          }
-
-          return hass.formatEntityState({
-            ...cardState,
-            state,
-          });
-        },
-      };
-
-      return html`${card}`;
+      return state;
     },
     args: () => [this._config, this._hass, this._currentState, this._start, this._end],
   });
 
   render() {
     return this._renderTask.render({
-      pending: () => html`Pending...`,
-      complete: (value) => value,
-      error: (e) => html`Error: ${e}`,
+      pending: () => this._updateCard(this._hass, this._card, 0),
+      complete: (value) => this._updateCard(this._hass, this._card, value),
+      error: (e) => this._updateCard(this._hass, this._card, `Error: ${e}`),
     });
   }
 
@@ -293,7 +307,7 @@ class StatisticsTile extends LitElement {
     if (config.aggregate && !aggregates.includes(config.aggregate)) {
       throw new Error(`Aggregate must be one of [${aggregates.join(", ")}]`);
     }
-  }
+  };
 
   setConfig = (config) => {
     StatisticsTile._assertConfig(config);
@@ -329,12 +343,12 @@ class StatisticsTile extends LitElement {
   static get styles() {
     return css``;
   }
-    static getConfigForm() {
+  static getConfigForm() {
     return {
       schema: [
         { name: "entity", required: true, selector: { entity: {} } },
-        { name: "collection_key",  selector: { text: {} } },
-        { name: "aggregate", selector: { select: { options: aggregates }}}, 
+        { name: "collection_key", selector: { text: {} } },
+        { name: "aggregate", selector: { select: { options: aggregates } } },
       ],
       computeLabel: (schema) => {
         switch (schema.name) {
@@ -348,7 +362,7 @@ class StatisticsTile extends LitElement {
           case "aggregate":
             return "How the data should be aggregated over the time range.";
           case "collection_key":
-            return "Optional key to connect a collection of energy cards to any matching date picker. Energy cards on this dashboard with no key will automatically be linked together."
+            return "Optional key to connect a collection of energy cards to any matching date picker. Energy cards on this dashboard with no key will automatically be linked together.";
         }
         return undefined;
       },
