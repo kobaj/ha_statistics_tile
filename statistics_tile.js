@@ -281,7 +281,7 @@ class StatisticsTile extends LitElement {
     });
   }
 
-  setConfig = (config) => {
+  static _assertConfig = (config) => {
     if (!config.entity) {
       throw new Error("You need to define an entity");
     }
@@ -293,7 +293,10 @@ class StatisticsTile extends LitElement {
     if (config.aggregate && !aggregates.includes(config.aggregate)) {
       throw new Error(`Aggregate must be one of [${aggregates.join(", ")}]`);
     }
+  }
 
+  setConfig = (config) => {
+    StatisticsTile._assertConfig(config);
     this._config = config;
   };
 
@@ -325,6 +328,32 @@ class StatisticsTile extends LitElement {
 
   static get styles() {
     return css``;
+  }
+    static getConfigForm() {
+    return {
+      schema: [
+        { name: "entity", required: true, selector: { entity: {} } },
+        { name: "collection_key",  selector: { text: {} } },
+        { name: "aggregate", selector: { select: { options: aggregates }}}, 
+      ],
+      computeLabel: (schema) => {
+        switch (schema.name) {
+          case "aggregate":
+            return "Aggregate Function";
+        }
+        return undefined;
+      },
+      computeHelper: (schema) => {
+        switch (schema.name) {
+          case "aggregate":
+            return "How the data should be aggregated over the time range.";
+          case "collection_key":
+            return "Optional key to connect a collection of energy cards to any matching date picker. Energy cards on this dashboard with no key will automatically be linked together."
+        }
+        return undefined;
+      },
+      assertConfig: (config) => StatisticsTile._assertConfig(config),
+    };
   }
 }
 customElements.define("statistics-tile", StatisticsTile);
