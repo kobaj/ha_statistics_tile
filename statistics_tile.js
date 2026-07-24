@@ -420,7 +420,7 @@ class StatisticsTile extends LitElement {
         }
         return undefined;
       },
-      assertConfig: (config) => StatisticsTile._assertConfig(config),
+      // Do not use assertConfig.
     };
   }
 }
