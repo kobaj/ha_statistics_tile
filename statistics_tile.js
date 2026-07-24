@@ -111,13 +111,6 @@ class StatisticsTile extends LitElement {
       return;
     }
 
-    if (this._start || this._end) {
-      // Technically this means we need to refresh the page for
-      // stuff to automatically recalculate. But I don't really care.
-      return;
-    }
-
-    // Really wish the default energy date range worked better and I didn't need to do this manually.
     const accumulateDate = (accDate, dateConfig) => {
       if (dateConfig.now) {
         return DateTime.now();
@@ -155,6 +148,11 @@ class StatisticsTile extends LitElement {
       return;
     }
 
+    if (config.start || config.end) {
+      // Ignore connection key if start/end are set instead.
+      return;
+    }
+
     const connectionKey = () => {
       if (config.collection_key) {
         // User specified energy connection. See other energy cards as an example.
@@ -172,12 +170,6 @@ class StatisticsTile extends LitElement {
     }
 
     this._unsubscribeEnergy = this._energyCollection.subscribe(({ start, end }) => {
-      if (!this._consumedFirstEnergySubscription) {
-        // Ignore the very first subscription, its wrong.
-        this._consumedFirstEnergySubscription = true;
-        return;
-      }
-
       this._start = start;
       this._end = end;
     });
@@ -360,6 +352,14 @@ class StatisticsTile extends LitElement {
 
     if (config.aggregate && !aggregates.includes(config.aggregate)) {
       throw new Error(`Aggregate must be one of [${aggregates.join(", ")}]`);
+    }
+
+    if (config.start && config.collection_key) {
+      throw new Error(`Cannot set both 'start' and 'collection_key', pick only one.`);
+    }
+
+    if (config.end && config.collection_key) {
+      throw new Error(`Cannot set both 'end' and 'collection_key', pick only one.`);
     }
   };
 
