@@ -123,14 +123,7 @@ class StatisticsTile extends LitElement {
         return DateTime.now();
       }
 
-      const parseables = ["minus", "plus", "set"];
-      for (const parseable of parseables) {
-        if (dateConfig[parseable]) {
-          return accDate[parseable](JSON.parse(dateConfig[parseable]));
-        }
-      }
-
-      const rawables = ["startOf", "endOf"];
+      const rawables = ["startOf", "endOf", "minus", "plus", "set"];
       for (const rawable of rawables) {
         if (dateConfig[rawable]) {
           return accDate[rawable](dateConfig[rawable]);
