@@ -106,6 +106,53 @@ class StatisticsTile extends LitElement {
     }
   };
 
+  _calculateStartEnd = async (config) => {
+    if (!config) {
+      return;
+    }
+
+    if (this._start || this._end) {
+      // Technically this means we need to refresh the page for
+      // stuff to automatically recalculate. But I don't really care.
+      return;
+    }
+
+    // Really wish the default energy date range worked better and I didn't need to do this manually.
+    const accumulateDate = (accDate, dateConfig) => {
+      if (dateConfig.now) {
+        return DateTime.now();
+      }
+
+      const parseables = ["minus", "plus", "set"];
+      for (const parseable of parseables) {
+        if (dateConfig[parseable]) {
+          return accDate[parseable](JSON.parse(dateConfig[parseable]));
+        }
+      }
+
+      const rawables = ["startOf", "endOf"];
+      for (const rawable of rawables) {
+        if (dateConfig[rawable]) {
+          return accDate[rawable](dateConfig[rawable]);
+        }
+      }
+
+      return accDate;
+    };
+
+    const calculateDate = (dateConfigs) => {
+      return dateConfigs.reduce(accumulateDate, DateTime.now()).startOf("day").toJSDate();
+    };
+
+    if (config.start) {
+      this._start = calculateDate(config.start);
+    }
+
+    if (config.end) {
+      this._end = calculateDate(config.end);
+    }
+  };
+
   _connectToEnergy = async (config, hass) => {
     if (this._energyCollection) {
       return;
@@ -132,6 +179,12 @@ class StatisticsTile extends LitElement {
     }
 
     this._unsubscribeEnergy = this._energyCollection.subscribe(({ start, end }) => {
+      if (!this._consumedFirstEnergySubscription) {
+        // Ignore the very first subscription, its wrong.
+        this._consumedFirstEnergySubscription = true;
+        return;
+      }
+
       this._start = start;
       this._end = end;
     });
@@ -286,6 +339,7 @@ class StatisticsTile extends LitElement {
         return "Starting...";
       }
 
+      await this._calculateStartEnd(config);
       await this._connectToEnergy(config, hass);
       const helpers = await this._loadCardHelpers();
       const card = await this._renderCard(config, helpers);
