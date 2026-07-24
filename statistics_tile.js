@@ -65,8 +65,8 @@ class StatisticsTile extends LitElement {
   // These are the elements that when change trigger a Render or Task update.
   static get properties() {
     return {
+      // Do not put HASS here, it updates too frequently.
       _config: { state: true, attribute: false },
-      _hass: { state: true, attribute: false },
       _start: { state: true, attribute: false },
       _end: { state: true, attribute: false },
       _currentState: { state: true, attribute: false },
