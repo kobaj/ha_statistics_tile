@@ -32,13 +32,15 @@ This is based on the instructions at
 
 ## Setup
 
-The main Config has three options, all configured via the UI when adding the card.
+The main Config has the following options, all configured via the UI when adding the card.
 
 * `entity` is the entity you want statistics for. Must be an entity with `state_class` equal to either `total` or `total_increasing`.
 * `aggregate` is the function you want to use to aggregate the entity metrics for over the selected time period.
-* `collection_key` an optional key to connect a collection of energy cards to a particular date picker.
+* `collection_key` an optional key to connect a collection of energy cards to a particular date picker. If left blank, will use the current dashboard's date picker. The date picker determines the time period used by aggregate.
 
 There is a hidden option called `card` which has all the same sub entities as the `tile` card. So you can do things like set the name of the tile.
+
+There is a second hidden option called `start` and `end` which you can use to specify the time period (via luxon like operations) which the statistics are calculated over. Cannot be used at the same time as collection_key.
 
 ```
 type: custom:statistics-tile
@@ -46,4 +48,7 @@ entity: sensor.inverter_modbus_daily_energy_generated
 aggregate: sum
 card:
   name: Solar
+start:
+  - minus:
+      days: 30
 ```
