@@ -307,10 +307,6 @@ class StatisticsTile extends LitElement {
   }
 
   static _assertConfig = (config) => {
-    if (!config.entity) {
-      throw new Error("You need to define an entity");
-    }
-
     if (config.collection_key && !config.collection_key.startsWith("energy_")) {
       throw new Error("Energy collection key must start with energy_");
     }
