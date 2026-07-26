@@ -256,7 +256,7 @@ class StatisticsTile extends LitElement {
     }
 
     const aggregate = config.aggregate ?? aggregate_sum;
-    const { start, end, today, range, count } = calcDateRange(startInput, endInput);
+    const { start, end, today, range } = calcDateRange(startInput, endInput);
 
     // Kind of hacky to do this, but its a cheap easy way to get the most accurate
     // value for "now" since statistics are otherwise delayed by an hour.
@@ -273,6 +273,7 @@ class StatisticsTile extends LitElement {
     }
 
     let result = 0;
+    let count = 0;
     for (const date of range()) {
       const value = stats[date.getTime()];
       if (value == null) {
@@ -291,6 +292,7 @@ class StatisticsTile extends LitElement {
       if (aggregate === aggregate_min) {
         result = Math.min(result, value);
       }
+      count += 1;
     }
 
     if (aggregate === aggregate_avg) {
