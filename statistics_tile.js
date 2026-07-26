@@ -348,7 +348,10 @@ class StatisticsTile extends LitElement {
     return this._renderTask.render({
       pending: () => this._updateCard(this._hass, this._card, this._state ?? 0),
       complete: (value) => this._updateCard(this._hass, this._card, value),
-      error: (e) => this._updateCard(this._hass, this._card, `Error: ${e}`),
+      error: (e) => {
+        console.error(e);
+        return this._updateCard(this._hass, this._card, `Error: ${e}`);
+      },
     });
   }
 
