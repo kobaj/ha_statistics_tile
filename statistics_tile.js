@@ -10,6 +10,11 @@ const aggregate_avg = "avg";
 const aggregate_sum = "sum";
 const aggregates = [aggregate_avg, aggregate_first, aggregate_last, aggregate_min, aggregate_max, aggregate_sum];
 
+// Note! When editing this file on home assistant you need to
+// manually compress it to gzip for HA to pick up the changes
+//
+// gzip -f -k statistics_tile.js
+
 const calcDateRange = (startInput, endInput) => {
   // These are local time.
 
