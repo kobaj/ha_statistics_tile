@@ -171,6 +171,16 @@ class StatisticsTile extends LitElement {
 
     this._energyCollection = hass.connection[connectionKey()];
     if (!this._energyCollection) {
+      // Generally this means we loaded faster than the energy card did.
+      // We need to wait just a bit and try again.
+
+      this._energyCollectionAttempt = (this._energyCollectionAttempt ?? 0) + 1;
+      if (this._energyCollectionAttempt >= 5) {
+        return;
+      }
+
+      const updateMs = 200 + Math.floor(Math.random() * 500);
+      setTimeout(this._connectToEnergy, updateMs, config, hass);
       return;
     }
 
