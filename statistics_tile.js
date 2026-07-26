@@ -92,11 +92,6 @@ class StatisticsTile extends LitElement {
     event.callback = this._updateStates;
 
     this.dispatchEvent(event);
-
-    // Add some small jitter so not everything triggers at the exact same time.
-    const updateMs = 1000 + Math.floor(Math.random() * 500);
-    const snapshotInterval = setInterval(this._retriggerUpdate, updateMs);
-    this._unsubscribeSnapshotState = () => clearInterval(snapshotInterval);
   }
 
   // Receive the states updates.
@@ -114,37 +109,6 @@ class StatisticsTile extends LitElement {
     if (this._currentState?.state !== state?.state) {
       this._currentState = state;
     }
-  };
-
-  _retriggerUpdate = () => {
-    // Lit doesn't know how to handle data update cascades.
-    // If Lit is rendering, and a property updates, that property does not
-    // trigger another render. It is just silently ignored.
-    // So this is a bad hacky fix that ensures we keep rendering
-    // til the final render finally matches the internal properties.
-    if (!this._stateSnapshot) {
-      // Haven't even rendered once, hold on.
-      return;
-    }
-
-    const latestStateSnapshot = this._buildSnapshotState();
-    const hasDiff = Object.keys(latestStateSnapshot).some((key, i, latest) => {
-      // Referencial integrity check to match what Lit is doing.
-      latest[key] != this._snapshotState[key];
-    });
-
-    if (hasDiff) {
-      console.log("Forcing update");
-      this.requestUpdate();
-    }
-  };
-
-  _buildSnapshotState = () => {
-    return Object.fromEntries(Object.keys(StatisticsTile.properties).map((key) => [key, this[key]]));
-  };
-
-  _snapshotState = () => {
-    this._stateSnapshot = this._buildSnapshotState();
   };
 
   _calculateStartEnd = async (config) => {
@@ -367,8 +331,6 @@ class StatisticsTile extends LitElement {
         return "Starting...";
       }
 
-      this._snapshotState();
-
       await this._calculateStartEnd(config);
       await this._connectToEnergy(config, hass);
       const helpers = await this._loadCardHelpers();
@@ -439,11 +401,6 @@ class StatisticsTile extends LitElement {
     if (this._unsubscribeEnergy) {
       this._unsubscribeEnergy();
       this._unsubscribeEnergy = undefined;
-    }
-
-    if (this._unsubscribeSnapshotState) {
-      this._unsubscribeSnapshotState();
-      this._unsubscribeSnapshotState = undefined;
     }
   }
 
