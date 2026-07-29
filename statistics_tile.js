@@ -175,12 +175,12 @@ class StatisticsTile extends LitElement {
       // We need to wait just a bit and try again.
 
       this._energyCollectionAttempt = (this._energyCollectionAttempt ?? 0) + 1;
-      if (this._energyCollectionAttempt >= 5) {
-        return;
+      if (this._energyCollectionAttempt <= 5) {
+        const updateMs = 200 + Math.floor(Math.random() * 500);
+        setTimeout(this._connectToEnergy, updateMs, config, hass);
       }
 
-      const updateMs = 200 + Math.floor(Math.random() * 500);
-      setTimeout(this._connectToEnergy, updateMs, config, hass);
+      // Make sure to return here.
       return;
     }
 
