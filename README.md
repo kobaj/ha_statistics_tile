@@ -2,7 +2,7 @@
 
 Note: The primary repository is at https://gitlab.com/kobaj/ha_statistics_tile. Please make all pull requests and issues there.
 
-Home Assistant Card that looks like the [Tile Card](https://www.home-assistant.io/dashboards/tile/) with its clean simple information display, but acts like  the [Statistics card](https://www.home-assistant.io/dashboards/statistic/) with the ability to aggregate that information over time. 
+Home Assistant Card that looks like the [Tile Card](https://www.home-assistant.io/dashboards/tile/) with its clean simple information display, but acts like  the [Statistics card](https://www.home-assistant.io/dashboards/statistic/) with the ability to aggregate that information over time.
 
 |   |   |
 |---|---|
@@ -35,7 +35,7 @@ This is based on the instructions at
 The main Config has the following options, all configured via the UI when adding the card.
 
 * `entity` is the entity you want statistics for. Must be an entity with `state_class` equal to either `total` or `total_increasing`.
-* `aggregate` is the function you want to use to aggregate the entity metrics for over the selected time period.
+* `aggregate` is the function you want to use to aggregate the entity metrics for over the selected time period. eg, `max`, `min`, `first`, `last`, `avg`, or `sum`.
 * `collection_key` an optional key to connect a collection of energy cards to a particular date picker. If left blank, will use the current dashboard's date picker. The date picker determines the time period used by aggregate.
 
 There is a hidden option called `card` which has all the same sub entities as the `tile` card. So you can do things like set the name of the tile.

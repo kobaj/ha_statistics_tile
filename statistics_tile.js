@@ -253,7 +253,7 @@ class StatisticsTile extends LitElement {
 
     const cardConfig = {
       type: "tile",
-      entity: config.entity,
+      entity: config.entity, // This is entityId
       ...(config.card ?? {}),
     };
     this._card = await helpers.createCardElement(cardConfig);
@@ -317,19 +317,16 @@ class StatisticsTile extends LitElement {
       return html`<ha-card>${state}</ha-card>`;
     }
 
+    // Its hacky, but the only way I can figure out how to hook into the tile card render loop to display what I want.
     card.hass = {
       ...hass,
-      // Its hacky, but the only way I can figure out how to hook into the tile card render loop to display what I want.
-      formatEntityState: (cardState) => {
-        if (typeof state === "string") {
-          return state;
+      states: {
+        ...hass.states,
+        [card._config.entity]: {
+          ...hass.states[card._config.entity],
+          state
         }
-
-        return hass.formatEntityState({
-          ...cardState,
-          state,
-        });
-      },
+      }
     };
 
     return html`${card}`;
